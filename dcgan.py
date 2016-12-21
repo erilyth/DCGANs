@@ -1,6 +1,4 @@
-import random
 import numpy as np
-import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D
@@ -93,6 +91,22 @@ GAN.compile(loss='categorical_crossentropy', optimizer=GAN_optim)
 GAN.summary()
 
 
+def toggle_trainable(network, state):
+    network.trainable = state
+    for layer in network.layers:
+        layer.trainable = state
+
+
+def sample_generation():
+    sample_noise = np.random.uniform(0, 1, size=[1, 100])
+    generated_image = generator.predict(sample_noise)
+    generated_image = unnormalize_data(generated_image[0][0])
+    # This would give us a 28x28 sized image
+    print(generated_image.shape)
+    plt.imshow(generated_image, cmap='gray')
+    plt.show()
+
+
 def pretrain_discriminator():
     # Call this before training the GAN to start with a trained discriminator
     current_train = train_data[:, :, :, :]
@@ -107,6 +121,9 @@ def pretrain_discriminator():
 
 def train_gan():
     for time_step in tqdm(range(10000)):
+        # Display a random generated sample every iteration
+        sample_generation()
+
         batch_size = 64
         random_noise = np.random.uniform(0, 1, size=[batch_size, 100])
 
@@ -124,6 +141,7 @@ def train_gan():
         discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, discrim_current_labels)
         discriminator_losses.append(discriminator_loss_cur)
 
+        toggle_trainable(discriminator, False)
         gen_current_train = random_noise
         gen_current_labels = np.zeros(shape=[batch_size, 2])
         # When we train the generator we want it to fool the discriminator so we use the opposite labels
@@ -131,5 +149,11 @@ def train_gan():
         gen_current_labels[:, 0] = 1
         generator_loss_cur = GAN.train_on_batch(gen_current_train, gen_current_labels)
         generator_losses.append(generator_loss_cur)
+        toggle_trainable(discriminator, True)
 
         print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
+
+
+sample_generation()
+pretrain_discriminator()
+train_gan()
