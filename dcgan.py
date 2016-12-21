@@ -9,18 +9,32 @@ from keras.layers.advanced_activations import LeakyReLU
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+
 # Uses Theano based tensors of shape (channels, rows, cols), for details see https://keras.io/backend/
 # Use the MNIST dataset
 
-h, w = 28, 28
 
+def normalize_data(data):
+    # Data shape would be (_, 1, 28, 28)
+    data -= 128.0
+    data /= 255.0
+    return data
+
+
+def unnormalize_data(data):
+    # Data shape would be (_, 1, 28, 28)
+    data *= 255.0
+    data += 128.0
+    return data
+
+
+h, w = 28, 28
 (train_data, train_labels), (test_data, test_labels) = mnist.load_data()
 train_size = train_data.shape[0]
 # Batch inputs to keras models require this shape
 train_data = train_data.reshape(train_size, 1, h, w).astype('float32')
-train_data /= 255.0
+train_data = normalize_data(train_data)
 print(train_data.shape[1:])
-
 
 # Discriminator Model
 discriminator = Sequential()
@@ -40,7 +54,6 @@ discriminator_optim = Adam(lr=1e-3)
 discriminator.compile(loss='categorical_crossentropy', optimizer=discriminator_optim)
 print(discriminator.summary())
 
-
 # Generator Model
 generator = Sequential()
 generator.add(Dense(512*7*7, input_shape=(100,)))
@@ -58,6 +71,14 @@ generator_optim = Adam(lr=1e-4)
 # Apply log loss at the output of shape (_, 1, 28, 28)
 generator.compile(loss='binary_crossentropy', optimizer=generator_optim)
 print(generator.summary())
+
+# The final GAN architecture
+GAN = Sequential()
+GAN.add(generator)
+GAN.add(discriminator)
+GAN_optim = Adam(lr=1e-4)
+GAN.compile(loss='categorical_crossentropy', optimizer=GAN_optim)
+GAN.summary()
 
 
 
