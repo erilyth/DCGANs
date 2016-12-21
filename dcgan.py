@@ -4,6 +4,7 @@ from keras.models import Sequential
 from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D
 from keras.optimizers import Adam
 from keras.layers.advanced_activations import LeakyReLU
+import keras
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -13,6 +14,9 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
+display_update = 5 # Save the models and update outputs every 5 iterations
+backup_update = 15 # Store a backup of the models every 15 iterations
+load_models = 1
 
 
 def normalize_data(data):
@@ -90,6 +94,11 @@ GAN_optim = Adam(lr=1e-4)
 GAN.compile(loss='categorical_crossentropy', optimizer=GAN_optim)
 GAN.summary()
 
+if load_models == 1:
+    print("Loading models from saved files!")
+    discriminator.load_weights("discriminator.keras")
+    generator.load_weights("generator.keras")
+
 
 def toggle_trainable(network, state):
     network.trainable = state
@@ -98,13 +107,14 @@ def toggle_trainable(network, state):
 
 
 def sample_generation():
-    sample_noise = np.random.uniform(0, 1, size=[1, 100])
-    generated_image = generator.predict(sample_noise)
-    generated_image = unnormalize_data(generated_image[0][0])
-    # This would give us a 28x28 sized image
-    print(generated_image.shape)
-    plt.imshow(generated_image, cmap='gray')
-    plt.show()
+    sample_noise = np.random.uniform(0, 1, size=[9, 100])
+    generated_images = generator.predict(sample_noise)
+    generated_images = unnormalize_data(generated_images)
+    for image_idx in range(len(generated_images)):
+        plt.subplot(3, 3, image_idx+1)
+        generated_image = generated_images[image_idx][0]
+        plt.imshow(generated_image, cmap='gray')
+    plt.show(block=False)
 
 
 def pretrain_discriminator():
@@ -116,13 +126,23 @@ def pretrain_discriminator():
     # The first half of the samples are real data whereas the second half are generated
     current_labels[:int(len(current_train)/2),1] = 1
     current_labels[int(len(current_train)/2):,0] = 1
+    print("Starting to pre-train the discriminator!")
     discriminator.fit(current_train, current_labels, nb_epoch=1, batch_size=64)
-
+    # Save the trained discriminator weights
+    discriminator.save_weights("discriminator.keras")
+    generator.save_weights("generator.keras")
 
 def train_gan():
-    for time_step in tqdm(range(10000)):
-        # Display a random generated sample every iteration
-        sample_generation()
+    for time_step in tqdm(range(100000)):
+        if time_step % display_update == 0:
+            # Display 9 randomly generated samples every display_update'th iteration
+            sample_generation()
+            # Save the current models as well
+            discriminator.save_weights("discriminator.keras")
+            generator.save_weights("generator.keras")
+            if time_step % backup_update == 0:
+                discriminator.save_weights("discriminator_backup.keras")
+                generator.save_weights("generator_backup.keras")
 
         batch_size = 64
         random_noise = np.random.uniform(0, 1, size=[batch_size, 100])
@@ -138,6 +158,7 @@ def train_gan():
         discrim_current_labels[:batch_size, 1] = 1
         discrim_current_labels[batch_size:, 0] = 1
 
+        print("Starting to train the discriminator!")
         discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, discrim_current_labels)
         discriminator_losses.append(discriminator_loss_cur)
 
@@ -147,13 +168,13 @@ def train_gan():
         # When we train the generator we want it to fool the discriminator so we use the opposite labels
         # We use gen_current_labels[:, 0] = 1 instead of using gen_current_labels[:, 1] = 1
         gen_current_labels[:, 0] = 1
+        print("Starting to train the generator!")
         generator_loss_cur = GAN.train_on_batch(gen_current_train, gen_current_labels)
         generator_losses.append(generator_loss_cur)
         toggle_trainable(discriminator, True)
 
         print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
 
-
-sample_generation()
-pretrain_discriminator()
+if load_models == 0:
+    pretrain_discriminator()
 train_gan()
