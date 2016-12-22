@@ -15,7 +15,7 @@ from tqdm import tqdm
 discriminator_losses = []
 generator_losses = []
 display_update = 5 # Save the models and update outputs every 5 iterations
-backup_update = 15 # Store a backup of the models every 15 iterations
+backup_update = 17 # Store a backup of the models every 15 iterations
 load_models = 1
 
 
@@ -63,7 +63,7 @@ discriminator.add(Dense(512))
 discriminator.add(LeakyReLU(0.2))
 discriminator.add(Dropout(0.2))
 discriminator.add(Dense(2, activation='softmax'))
-discriminator_optim = Adam(lr=1e-3)
+discriminator_optim = Adam(lr=0.0002)
 # Apply categorical loss at the output of shape (_, 2)
 discriminator.compile(loss='categorical_crossentropy', optimizer=discriminator_optim)
 print(discriminator.summary())
@@ -81,7 +81,7 @@ generator.add(Convolution2D(128, 3, 3, border_mode='same', activation='relu'))
 generator.add(LeakyReLU(0.1))
 generator.add(Convolution2D(1, 1, 1, border_mode='same', activation='relu'))
 generator.add(LeakyReLU(0.1))
-generator_optim = Adam(lr=1e-4)
+generator_optim = Adam(lr=0.0003)
 # Apply log loss at the output of shape (_, 1, 28, 28)
 generator.compile(loss='binary_crossentropy', optimizer=generator_optim)
 print(generator.summary())
@@ -90,7 +90,7 @@ print(generator.summary())
 GAN = Sequential()
 GAN.add(generator)
 GAN.add(discriminator)
-GAN_optim = Adam(lr=1e-4)
+GAN_optim = Adam(lr=0.0002)
 GAN.compile(loss='categorical_crossentropy', optimizer=GAN_optim)
 GAN.summary()
 
@@ -147,6 +147,8 @@ def train_gan():
         batch_size = 64
         random_noise = np.random.uniform(0, 1, size=[batch_size, 100])
 
+        # toggle_trainable(discriminator, True)
+        # toggle_trainable(generator, False)
         train_idx = np.random.randint(0, len(train_data), size=batch_size)
         discrim_current_train = train_data[train_idx,:,:,:]
         discrim_current_noise = random_noise
@@ -158,23 +160,26 @@ def train_gan():
         discrim_current_labels[:batch_size, 1] = 1
         discrim_current_labels[batch_size:, 0] = 1
 
-        print("Starting to train the discriminator!")
+        # print("Starting to train the discriminator!")
         discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, discrim_current_labels)
         discriminator_losses.append(discriminator_loss_cur)
+        # toggle_trainable(generator, True)
+        # toggle_trainable(discriminator, False)
 
-        toggle_trainable(discriminator, False)
+        # toggle_trainable(generator, True)
+        # toggle_trainable(discriminator, False)
         gen_current_train = random_noise
         gen_current_labels = np.zeros(shape=[batch_size, 2])
         # When we train the generator we want it to fool the discriminator so we use the opposite labels
         # We use gen_current_labels[:, 0] = 1 instead of using gen_current_labels[:, 1] = 1
-        gen_current_labels[:, 0] = 1
-        print("Starting to train the generator!")
+        gen_current_labels[:, 1] = 1
+        # print("Starting to train the generator!")
         generator_loss_cur = GAN.train_on_batch(gen_current_train, gen_current_labels)
         generator_losses.append(generator_loss_cur)
-        toggle_trainable(discriminator, True)
+        # toggle_trainable(discriminator, True)
+        # toggle_trainable(generator, False)
 
         print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
 
-if load_models == 0:
-    pretrain_discriminator()
+# pretrain_discriminator()
 train_gan()
