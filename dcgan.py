@@ -4,7 +4,7 @@ from keras.models import Sequential
 from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D
 from keras.optimizers import Adam
 from keras.layers.advanced_activations import LeakyReLU
-import keras
+import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 5 # Save the models and update outputs every 5 iterations
+display_update = 10 # Save the models and update outputs every 5 iterations
 backup_update = 17 # Store a backup of the models every 15 iterations
 load_models = 1
 
@@ -107,7 +107,7 @@ def toggle_trainable(network, state):
 
 
 def sample_generation():
-    sample_noise = np.random.uniform(0, 1, size=[9, 100])
+    sample_noise = np.random.uniform(-0.5, 0.5, size=[9, 100])
     generated_images = generator.predict(sample_noise)
     generated_images = unnormalize_data(generated_images)
     for image_idx in range(len(generated_images)):
@@ -115,12 +115,16 @@ def sample_generation():
         generated_image = generated_images[image_idx][0]
         plt.imshow(generated_image, cmap='gray')
     plt.show(block=False)
+    time.sleep(3)
+    plt.close('all')
 
 
 def pretrain_discriminator():
+    global generator
+    global discriminator
     # Call this before training the GAN to start with a trained discriminator
     current_train = train_data[:, :, :, :]
-    current_noise = np.random.uniform(0, 1, size=[len(train_data), 100])
+    current_noise = np.random.uniform(-0.5, 0.5, size=[len(train_data), 100])
     current_train = np.concatenate((current_train, generator.predict(current_noise)))
     current_labels = np.zeros(shape=[len(current_train), 2])
     # The first half of the samples are real data whereas the second half are generated
@@ -133,6 +137,10 @@ def pretrain_discriminator():
     generator.save_weights("generator.keras")
 
 def train_gan():
+    global generator
+    global discriminator
+    global generator_losses
+    global discriminator_losses
     for time_step in tqdm(range(100000)):
         if time_step % display_update == 0:
             # Display 9 randomly generated samples every display_update'th iteration
@@ -140,12 +148,12 @@ def train_gan():
             # Save the current models as well
             discriminator.save_weights("discriminator.keras")
             generator.save_weights("generator.keras")
-            if time_step % backup_update == 0:
-                discriminator.save_weights("discriminator_backup.keras")
-                generator.save_weights("generator_backup.keras")
+        if time_step % backup_update == 0:
+            discriminator.save_weights("discriminator_backup.keras")
+            generator.save_weights("generator_backup.keras")
 
         batch_size = 64
-        random_noise = np.random.uniform(0, 1, size=[batch_size, 100])
+        random_noise = np.random.uniform(-0.5, 0.5, size=[batch_size, 100])
 
         # toggle_trainable(discriminator, True)
         # toggle_trainable(generator, False)
@@ -183,3 +191,4 @@ def train_gan():
 
 # pretrain_discriminator()
 train_gan()
+plt.show()
