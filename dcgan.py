@@ -17,6 +17,7 @@ generator_losses = []
 display_update = 10 # Save the models and update outputs every 5 iterations
 backup_update = 17 # Store a backup of the models every 15 iterations
 load_models = 1
+backup2_update = 200
 
 
 def normalize_data(data):
@@ -151,6 +152,9 @@ def train_gan():
         if time_step % backup_update == 0:
             discriminator.save_weights("discriminator_backup.keras")
             generator.save_weights("generator_backup.keras")
+        if time_step % backup2_update == 0:
+            discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras")
+            generator.save_weights("generator_backup-" + str(time_step) + ".keras")
 
         batch_size = 64
         random_noise = np.random.uniform(-0.5, 0.5, size=[batch_size, 100])
