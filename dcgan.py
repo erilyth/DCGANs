@@ -52,34 +52,34 @@ print(train_data.shape[1:])
 
 # Discriminator Model
 discriminator = Sequential()
-discriminator.add(Convolution2D(128, 5, 5, subsample=(2,2), border_mode='same', input_shape=(1,28,28)))
+discriminator.add(Convolution2D(128, 5, 5, subsample=(2,2), border_mode='same', input_shape=(1,28,28), init='glorot_uniform'))
 discriminator.add(Activation('tanh'))
 discriminator.add(Dropout(0.2))
-discriminator.add(Convolution2D(512, 5, 5, subsample=(2,2), border_mode='same'))
+discriminator.add(Convolution2D(512, 5, 5, subsample=(2,2), border_mode='same', init='glorot_uniform'))
 discriminator.add(Activation('tanh'))
 discriminator.add(Dropout(0.2))
 discriminator.add(Flatten())
-discriminator.add(Dense(512))
+discriminator.add(Dense(512, init='glorot_uniform'))
 discriminator.add(Activation('tanh'))
 discriminator.add(Dropout(0.2))
-discriminator.add(Dense(2, activation='softmax'))
-discriminator_optim = Adam(lr=0.000013)
+discriminator.add(Dense(2, activation='softmax', init='glorot_uniform'))
+discriminator_optim = sgd(lr=0.01)
 # Apply categorical loss at the output of shape (_, 2)
 discriminator.compile(loss='categorical_crossentropy', optimizer=discriminator_optim)
 print(discriminator.summary())
 
 # Generator Model
 generator = Sequential()
-generator.add(Dense(512*7*7, input_shape=(100,)))
+generator.add(Dense(512*7*7, input_shape=(100,), init='glorot_uniform'))
 generator.add(Activation('tanh'))
 generator.add(Reshape([512, 7, 7]))
 generator.add(UpSampling2D(size=(2, 2)))
-generator.add(Convolution2D(256, 3, 3, border_mode='same'))
+generator.add(Convolution2D(256, 3, 3, border_mode='same', init='glorot_uniform'))
 generator.add(Activation('tanh'))
 generator.add(UpSampling2D(size=(2, 2)))
-generator.add(Convolution2D(128, 3, 3, border_mode='same'))
+generator.add(Convolution2D(128, 3, 3, border_mode='same', init='glorot_uniform'))
 generator.add(Activation('tanh'))
-generator.add(Convolution2D(1, 1, 1, border_mode='same'))
+generator.add(Convolution2D(1, 1, 1, border_mode='same', init='glorot_uniform'))
 generator.add(Activation('tanh'))
 generator_optim = Adam(lr=0.00001)
 # Apply log loss at the output of shape (_, 1, 28, 28)
@@ -165,8 +165,11 @@ def train_gan():
         discrim_current_train = np.concatenate((discrim_current_train, discrim_generated_train))
         discrim_current_labels = np.zeros(shape=[batch_size * 2, 2])
         # The first half of the samples are real data whereas the second half are generated
-        discrim_current_labels[:batch_size, 1] = 1
-        discrim_current_labels[batch_size:, 0] = 1
+        for ix in range(batch_size):
+            discrim_current_labels[ix, 1] = np.random.uniform(0.7, 1.2)
+            discrim_current_labels[ix, 0] = np.random.uniform(0.0, 0.3)
+            discrim_current_labels[batch_size+ix, 0] = np.random.uniform(0.7, 1.2)
+            discrim_current_labels[batch_size + ix, 1] = np.random.uniform(0.0, 0.3)
 
         # print("Starting to train the discriminator!")
         discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, discrim_current_labels)
@@ -180,7 +183,9 @@ def train_gan():
         gen_current_labels = np.zeros(shape=[batch_size, 2])
         # When we train the generator we want it to fool the discriminator so we use the opposite labels
         # We use gen_current_labels[:, 0] = 1 instead of using gen_current_labels[:, 1] = 1
-        gen_current_labels[:, 1] = 1
+        for ix in range(batch_size):
+            gen_current_labels[:, 1] = np.random.uniform(0.7, 1.2)
+            gen_current_labels[:, 0] = np.random.uniform(0.0, 0.3)
         # print("Starting to train the generator!")
         generator_loss_cur = GAN.train_on_batch(gen_current_train, gen_current_labels)
         generator_losses.append(generator_loss_cur)
