@@ -14,8 +14,8 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 10 # Save the models and update outputs every 5 iterations
-backup_update = 400 # Store a backup of the models every 400 iterations
+display_update = 500 # Save the models and update outputs every 5 iterations
+backup_update = 1000 # Store a backup of the models every 400 iterations
 load_models = 1
 
 
@@ -133,8 +133,8 @@ def pretrain_discriminator():
     print("Starting to pre-train the discriminator!")
     discriminator.fit(current_train, current_labels, nb_epoch=1, batch_size=64)
     # Save the trained discriminator weights
-    discriminator.save_weights("discriminator.keras")
-    generator.save_weights("generator.keras")
+    discriminator.save_weights("discriminator.keras", overwrite=True)
+    generator.save_weights("generator.keras", overwrite=True)
 
 def train_gan():
     global generator
@@ -146,11 +146,11 @@ def train_gan():
             # Display 9 randomly generated samples every display_update'th iteration
             sample_generation()
             # Save the current models as well
-            discriminator.save_weights("discriminator.keras")
-            generator.save_weights("generator.keras")
+            discriminator.save_weights("discriminator.keras", overwrite=True)
+            generator.save_weights("generator.keras", overwrite=True)
         if time_step % backup_update == 0:
-            discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras")
-            generator.save_weights("generator_backup-" + str(time_step) + ".keras")
+            discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras", overwrite=True)
+            generator.save_weights("generator_backup-" + str(time_step) + ".keras", overwrite=True)
 
         batch_size = 64
         random_noise = np.random.uniform(-0.5, 0.5, size=[batch_size, 100])
