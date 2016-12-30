@@ -10,13 +10,21 @@ from tqdm import tqdm
 
 
 # Uses Theano based tensors of shape (channels, rows, cols), for details see https://keras.io/backend/
-# Use the MNIST dataset
+
+"""
+# Algorithm Specifics:
+1) Uses the MNIST dataset
+2) The Generator takes in a random noise vector of shape (,100) as input and generates an output of shape (,1,28,28)
+3) The Discriminator takes in an input image of shape (,1,28,28) and gives an output of shape (,2)
+4) The outputs of the discriminator are probabilities. In the output labels, 0 corresponds to generated and 1 corresponds to real.  
+5) When we train the discriminator we use the correct output labels but when we train the generator we invert the labels, this ensures that the discriminator tries to maximize its prediction accuracy whereas the generator tries to minimize it.
+"""
 
 discriminator_losses = []
 generator_losses = []
-display_update = 100 # Save the models and update outputs every 5 iterations
-backup_update = 1000 # Store a backup of the models every 400 iterations
-load_models = 1
+display_update = 100 # Save the models and update outputs every 100 iterations
+backup_update = 1000 # Store a backup of the models every 1000 iterations
+load_models = 0
 
 
 def normalize_data(data):
@@ -183,7 +191,7 @@ def train_gan():
         gen_current_train = random_noise
         gen_current_labels = np.zeros(shape=[batch_size, 2])
         # When we train the generator we want it to fool the discriminator so we use the opposite labels
-        # We use gen_current_labels[:, 0] = 1 instead of using gen_current_labels[:, 1] = 1
+        # We use gen_current_labels[:, 1] = 1 instead of using gen_current_labels[:, 0] = 1
         for ix in range(batch_size):
             gen_current_labels[:, 1] = np.random.uniform(0.7, 1.2)
             gen_current_labels[:, 0] = np.random.uniform(0.0, 0.3)
