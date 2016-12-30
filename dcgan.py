@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 500 # Save the models and update outputs every 5 iterations
+display_update = 100 # Save the models and update outputs every 5 iterations
 backup_update = 1000 # Store a backup of the models every 400 iterations
 load_models = 1
 
@@ -22,13 +22,14 @@ load_models = 1
 def normalize_data(data):
     # Data shape would be (_, 1, 28, 28)
     data -= 128.0
-    data /= 255.0
+    data /= 128.0
     return data
 
 
 def unnormalize_data(data):
     # Data shape would be (_, 1, 28, 28)
-    data *= 255.0
+    # data = np.clip(data, 0.5, 1.0)
+    data *= 128.0
     data += 128.0
     return data
 
@@ -107,7 +108,7 @@ def toggle_trainable(network, state):
 
 
 def sample_generation():
-    sample_noise = np.random.uniform(-0.5, 0.5, size=[9, 100])
+    sample_noise = np.random.uniform(-1.0, 1.0, size=[9, 100])
     generated_images = generator.predict(sample_noise)
     generated_images = unnormalize_data(generated_images)
     for image_idx in range(len(generated_images)):
@@ -124,7 +125,7 @@ def pretrain_discriminator():
     global discriminator
     # Call this before training the GAN to start with a trained discriminator
     current_train = train_data[:, :, :, :]
-    current_noise = np.random.uniform(-0.5, 0.5, size=[len(train_data), 100])
+    current_noise = np.random.uniform(-1.0, 1.0, size=[len(train_data), 100])
     current_train = np.concatenate((current_train, generator.predict(current_noise)))
     current_labels = np.zeros(shape=[len(current_train), 2])
     # The first half of the samples are real data whereas the second half are generated
@@ -153,7 +154,7 @@ def train_gan():
             generator.save_weights("generator_backup-" + str(time_step) + ".keras", overwrite=True)
 
         batch_size = 64
-        random_noise = np.random.uniform(-0.5, 0.5, size=[batch_size, 100])
+        random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
 
         # toggle_trainable(discriminator, True)
         # toggle_trainable(generator, False)
@@ -195,5 +196,9 @@ def train_gan():
         print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
 
 # pretrain_discriminator()
-train_gan()
+# train_gan()
+
+for x in range(1000):
+    sample_generation()
+
 plt.show()
