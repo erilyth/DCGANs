@@ -66,8 +66,54 @@ discriminator_model = discriminator_t(input_d)
 
 type_predict = Dense(2, activation='softmax', name='type_predict')(discriminator_model)
 class_predict = Dense(10, activation='softmax', name='class_predict')(discriminator_model)
+
 discriminator = Model(input=input_d, output=[type_predict, class_predict])
-generator_optim = Adam(lr=0.00001)
+discriminator_optim = Adam(lr=0.00001)
 discriminator.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=discriminator_optim)
 print(discriminator.summary())
+
+# Generator Model
+input_g = Input(shape=(100,))
+input_class = Input(shape=(10,))
+
+generator_class = Dense(100, activation='tanh', input_shape=(10,))(input_class)
+merge_layer = merge([input_g, generator_class], mode='mul')
+
+generator_t = Sequential()
+generator_t.add(Dense(512*7*7, input_shape=(100,), init='glorot_uniform'))
+generator_t.add(Activation('tanh'))
+generator_t.add(Reshape([512, 7, 7]))
+generator_t.add(UpSampling2D(size=(2, 2)))
+generator_t.add(Convolution2D(256, 3, 3, border_mode='same', init='glorot_uniform'))
+generator_t.add(Activation('tanh'))
+generator_t.add(UpSampling2D(size=(2, 2)))
+generator_t.add(Convolution2D(128, 3, 3, border_mode='same', init='glorot_uniform'))
+generator_t.add(Activation('tanh'))
+generator_t.add(Convolution2D(1, 1, 1, border_mode='same', init='glorot_uniform'))
+generator_t.add(Activation('tanh'))
+
+generated_img = generator_t(merge_layer)
+
+generator = Model(input=[input_g, input_class], output=generated_img)
+generator_optim = Adam(lr=0.00001)
+generator.compile(loss='binary_crossentropy', optimizer=generator_optim)
+print(generator.summary())
+
+# The final GAN architecture
+latent_noise = Input(shape=(100,))
+image_class = Input(shape=(10,))
+generated_image = generator([latent_noise, image_class])
+type_predict, class_predict = discriminator(generated_image)
+
+GAN = Model(input=[latent_noise, image_class], output=[type_predict, class_predict])
+
+GAN_optim = Adam(lr=0.00001)
+GAN.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=GAN_optim)
+GAN.summary()
+
+if load_models == 1:
+    print("Loading models from saved files!")
+    discriminator.load_weights("discriminator.keras")
+    generator.load_weights("generator.keras")
+
 
