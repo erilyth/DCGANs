@@ -1,7 +1,7 @@
 import numpy as np
 from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation
+from keras.models import Sequential, Model
+from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, merge
 from keras.optimizers import Adam, sgd
 from keras.layers.advanced_activations import LeakyReLU
 import time
@@ -13,18 +13,14 @@ from tqdm import tqdm
 
 """
 # Algorithm Specifics:
-1) Uses the MNIST dataset
-2) The Generator takes in a random noise vector of shape (,100) as input and generates an output of shape (,1,28,28)
-3) The Discriminator takes in an input image of shape (,1,28,28) and gives an output of shape (,2)
-4) The outputs of the discriminator are probabilities. In the output labels, 0 corresponds to generated and 1 corresponds to real.  
-5) When we train the discriminator we use the correct output labels but when we train the generator we invert the labels, this ensures that the discriminator tries to maximize its prediction accuracy whereas the generator tries to minimize it.
+
 """
 
 discriminator_losses = []
 generator_losses = []
-display_update = 10 # Save the models and update outputs every 100 iterations
+display_update = 100 # Save the models and update outputs every 100 iterations
 backup_update = 1000 # Store a backup of the models every 1000 iterations
-load_models = 0
+load_models = 1
 
 
 def normalize_data(data):
@@ -42,6 +38,9 @@ def unnormalize_data(data):
     return data
 
 
+"""
+Gather the training data from the MNIST dataset
+"""
 h, w = 28, 28 # Generated image height and width
 (train_data, train_labels), (test_data, test_labels) = mnist.load_data()
 train_size = train_data.shape[0]
@@ -50,7 +49,10 @@ train_data = train_data.reshape(train_size, 1, h, w).astype('float32')
 train_data = normalize_data(train_data)
 print(train_data.shape[1:])
 
-# Discriminator Model
+
+"""
+Discriminator Model
+"""
 input_d = Input(shape=(1,28,28))
 
 discriminator_t = Sequential()
@@ -72,7 +74,10 @@ discriminator_optim = Adam(lr=0.00001)
 discriminator.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=discriminator_optim)
 print(discriminator.summary())
 
-# Generator Model
+
+"""
+Generator Model
+"""
 input_g = Input(shape=(100,))
 input_class = Input(shape=(10,))
 
@@ -99,17 +104,22 @@ generator_optim = Adam(lr=0.00001)
 generator.compile(loss='binary_crossentropy', optimizer=generator_optim)
 print(generator.summary())
 
-# The final GAN architecture
+
+"""
+The final GAN architecture
+"""
 latent_noise = Input(shape=(100,))
 image_class = Input(shape=(10,))
 generated_image = generator([latent_noise, image_class])
-type_predict, class_predict = discriminator(generated_image)
+print generated_image.shape
+type_predicted, class_predicted = discriminator(generated_image)
 
-GAN = Model(input=[latent_noise, image_class], output=[type_predict, class_predict])
+GAN = Model(input=[latent_noise, image_class], output=[type_predicted, class_predicted])
 
 GAN_optim = Adam(lr=0.00001)
 GAN.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=GAN_optim)
 GAN.summary()
+
 
 if load_models == 1:
     print("Loading models from saved files!")
@@ -117,3 +127,99 @@ if load_models == 1:
     generator.load_weights("generator.keras")
 
 
+def toggle_trainable(network, state):
+    network.trainable = state
+    for layer in network.layers:
+        layer.trainable = state
+
+
+def sample_generation(class_id):
+    class_vector = np.zeros([9, 10])
+    class_vector[:,class_id] = 1.0
+    sample_noise = np.random.uniform(-1.0, 1.0, size=[9, 100])
+    generated_images = generator.predict([sample_noise, class_vector])
+    generated_images = unnormalize_data(generated_images)
+    for image_idx in range(len(generated_images)):
+        plt.subplot(3, 3, image_idx+1)
+        generated_image = generated_images[image_idx][0]
+        plt.imshow(generated_image, cmap='gray')
+    plt.show(block=False)
+    time.sleep(3)
+    plt.close('all')
+
+
+def train_gan():
+    for time_step in tqdm(range(30000)):
+        if time_step % display_update == 0:
+            # Display 9 randomly generated samples every display_update'th iteration
+            sample_generation(np.random.randint(0,10))
+            # Save the current models as well
+            discriminator.save_weights("discriminator.keras", overwrite=True)
+            generator.save_weights("generator.keras", overwrite=True)
+        if time_step % backup_update == 0:
+            discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras", overwrite=True)
+            generator.save_weights("generator_backup-" + str(time_step) + ".keras", overwrite=True)
+
+        """
+        Generate some random noise and some random labels to use as inputs
+        """
+        batch_size = 64
+        random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
+        random_labels_idx = np.random.randint(0, 10, batch_size)
+        random_labels = np.zeros([batch_size, 10])
+        for idx in range(batch_size):
+            random_labels[idx][random_labels_idx[idx]] = 1.0
+
+        """
+        To train the discriminator we need real images and generated images
+        """
+        # We first gather batch_size number of read images from the MNIST dataset
+        train_idx = np.random.randint(0, len(train_data), size=batch_size)
+        discrim_current_train = train_data[train_idx,:,:,:]
+        discrim_current_train_labels_idx = train_labels[train_idx]
+        discrim_current_train_labels = np.zeros([batch_size, 10])
+        for idx in range(batch_size):
+            discrim_current_train_labels[idx][discrim_current_train_labels_idx[idx]] = 1.0
+
+        # We now use the random noise and random labels to generate fake images
+        discrim_current_noise = random_noise
+        discrim_current_noise_labels = random_labels
+        discrim_generated_train = generator.predict([discrim_current_noise, discrim_current_noise_labels])
+
+        # Concatenate both the real and the fake data to produce data for an epoch of training on the discriminator
+        discrim_current_train = np.concatenate((discrim_current_train, discrim_generated_train))
+        discrim_current_train_labels = np.concatenate((discrim_current_train_labels, discrim_current_noise_labels))
+        discrim_current_train_type = np.zeros(shape=[batch_size * 2, 2])
+        # The first half of the samples are real data whereas the second half are generated
+        for ix in range(batch_size):
+            discrim_current_train_type[ix, 1] = np.random.uniform(0.7, 1.2)
+            discrim_current_train_type[ix, 0] = np.random.uniform(0.0, 0.3)
+            discrim_current_train_type[batch_size+ix, 0] = np.random.uniform(0.7, 1.2)
+            discrim_current_train_type[batch_size + ix, 1] = np.random.uniform(0.0, 0.3)
+
+        discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, [discrim_current_train_type, discrim_current_train_labels])
+        discriminator_losses.append(discriminator_loss_cur)
+
+        """
+        To train the generator use the random noise and random labels from earlier
+        """
+        gen_current_train = random_noise
+        gen_current_train_labels = random_labels
+        gen_current_train_type = np.zeros(shape=[batch_size, 2])
+        # When we train the generator we want it to fool the discriminator so we use the opposite labels
+        # We use gen_current_labels[:, 1] = 1 instead of using gen_current_labels[:, 0] = 1
+        for ix in range(batch_size):
+            gen_current_train_type[:, 1] = np.random.uniform(0.7, 1.2)
+            gen_current_train_type[:, 0] = np.random.uniform(0.0, 0.3)
+        generator_loss_cur = GAN.train_on_batch([gen_current_train, gen_current_train_labels], [gen_current_train_type, gen_current_train_labels])
+        generator_losses.append(generator_loss_cur)
+
+
+        print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
+
+
+train_gan()
+# for x in range(1000):
+#    sample_generation(np.random.randint(0,10))
+
+plt.show()
