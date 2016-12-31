@@ -152,7 +152,9 @@ def train_gan():
     for time_step in tqdm(range(30000)):
         if time_step % display_update == 0:
             # Display 9 randomly generated samples every display_update'th iteration
-            sample_generation(np.random.randint(0,10))
+            class_id = np.random.randint(0,10)
+            print(class_id)
+            sample_generation(class_id)
             # Save the current models as well
             discriminator.save_weights("discriminator.keras", overwrite=True)
             generator.save_weights("generator.keras", overwrite=True)
