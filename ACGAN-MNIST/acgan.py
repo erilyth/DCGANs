@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 500 # Save the models and update outputs every 100 iterations
+display_update = 300 # Save the models and update outputs every 100 iterations
 backup_update = 3000 # Store a backup of the models every 1000 iterations
 load_models = 1
 
@@ -47,7 +47,13 @@ train_size = train_data.shape[0]
 # Batch inputs to keras models require this shape
 train_data = train_data.reshape(train_size, 1, h, w).astype('float32')
 train_data = normalize_data(train_data)
-print(train_data.shape[1:])
+# A dictionary where each key is the data corresponding to a certain class
+final_data = {}
+for idx in range(len(train_data)):
+    if train_labels[idx] in final_data:
+        final_data[train_labels[idx]].append(train_data[idx])
+    else:
+        final_data[train_labels[idx]] = []
 
 
 """
@@ -70,7 +76,7 @@ type_predict = Dense(2, activation='softmax', name='type_predict')(discriminator
 class_predict = Dense(10, activation='softmax', name='class_predict')(discriminator_model)
 
 discriminator = Model(input=input_d, output=[type_predict, class_predict])
-discriminator_optim = Adam(lr=0.00001)
+discriminator_optim = Adam(lr=0.000013)
 discriminator.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=discriminator_optim)
 print(discriminator.summary())
 
@@ -136,6 +142,7 @@ def toggle_trainable(network, state):
 def sample_generation(class_id):
     class_vector = np.zeros([9, 10])
     class_vector[:,class_id] = 1.0
+    print(class_vector)
     sample_noise = np.random.uniform(-1.0, 1.0, size=[9, 100])
     generated_images = generator.predict([sample_noise, class_vector])
     generated_images = unnormalize_data(generated_images)
@@ -143,6 +150,7 @@ def sample_generation(class_id):
         plt.subplot(3, 3, image_idx+1)
         generated_image = generated_images[image_idx][0]
         plt.imshow(generated_image, cmap='gray')
+        plt.title(str(class_id))
     plt.show(block=False)
     time.sleep(3)
     plt.close('all')
@@ -162,26 +170,29 @@ def train_gan():
             discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras", overwrite=True)
             generator.save_weights("generator_backup-" + str(time_step) + ".keras", overwrite=True)
 
+        
+        main_labels_idx = np.random.randint(0, 10)
+
         """
         Generate some random noise and some random labels to use as inputs
         """
         batch_size = 64
         random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
-        random_labels_idx = np.random.randint(0, 10, batch_size)
         random_labels = np.zeros([batch_size, 10])
         for idx in range(batch_size):
-            random_labels[idx][random_labels_idx[idx]] = 1.0
+            random_labels[idx][main_labels_idx] = 1.0
 
         """
         To train the discriminator we need real images and generated images
         """
-        # We first gather batch_size number of read images from the MNIST dataset
-        train_idx = np.random.randint(0, len(train_data), size=batch_size)
-        discrim_current_train = train_data[train_idx,:,:,:]
-        discrim_current_train_labels_idx = train_labels[train_idx]
+        # We first gather batch_size number of real images from the MNIST dataset
+        train_data_cur = np.asarray(final_data[main_labels_idx])
+        train_idx = np.random.randint(0, len(train_data_cur), size=batch_size)
+        discrim_current_train = train_data_cur[train_idx,:,:,:]
+        discrim_current_train_labels_idx = np.zeros(batch_size).fill(main_labels_idx)
         discrim_current_train_labels = np.zeros([batch_size, 10])
         for idx in range(batch_size):
-            discrim_current_train_labels[idx][discrim_current_train_labels_idx[idx]] = 1.0
+            discrim_current_train_labels[idx][main_labels_idx] = 1.0
 
         # We now use the random noise and random labels to generate fake images
         discrim_current_noise = random_noise
@@ -205,6 +216,7 @@ def train_gan():
         """
         To train the generator use the random noise and random labels from earlier
         """
+        toggle_trainable(discriminator, False)
         gen_current_train = random_noise
         gen_current_train_labels = random_labels
         gen_current_train_type = np.zeros(shape=[batch_size, 2])
@@ -215,7 +227,7 @@ def train_gan():
             gen_current_train_type[:, 0] = np.random.uniform(0.0, 0.3)
         generator_loss_cur = GAN.train_on_batch([gen_current_train, gen_current_train_labels], [gen_current_train_type, gen_current_train_labels])
         generator_losses.append(generator_loss_cur)
-
+        toggle_trainable(discriminator, True)
 
         print("Time Step: ", time_step, ", Discriminator Loss: ", discriminator_loss_cur, ", Generator Loss: ", generator_loss_cur)
 
