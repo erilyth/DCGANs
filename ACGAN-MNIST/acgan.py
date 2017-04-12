@@ -1,7 +1,7 @@
 import numpy as np
 from keras.datasets import mnist
 from keras.models import Sequential, Model
-from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, merge
+from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, merge, ZeroPadding2D
 from keras.optimizers import Adam, sgd
 from keras.layers.advanced_activations import LeakyReLU
 import time
@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 300 # Save the models and update outputs every 100 iterations
+display_update = 500 # Save the models and update outputs every 100 iterations
 backup_update = 3000 # Store a backup of the models every 1000 iterations
 load_models = 1
 
@@ -47,27 +47,35 @@ train_size = train_data.shape[0]
 # Batch inputs to keras models require this shape
 train_data = train_data.reshape(train_size, 1, h, w).astype('float32')
 train_data = normalize_data(train_data)
+# After normalization we just pad with the background -1 to make each image 32x32
+train_data = np.pad(train_data, pad_width=((0,0), (0,0), (2,2), (2,2)), mode='constant', constant_values=-1.0)
 # A dictionary where each key is the data corresponding to a certain class
 final_data = {}
 for idx in range(len(train_data)):
     if train_labels[idx] in final_data:
         final_data[train_labels[idx]].append(train_data[idx])
     else:
-        final_data[train_labels[idx]] = []
+        final_data[train_labels[idx]] = [train_data[idx]]
 
 
 """
 Discriminator Model
 """
-input_d = Input(shape=(1,28,28))
+input_d = Input(shape=(1,32,32))
 
 discriminator_t = Sequential()
-discriminator_t.add(Convolution2D(128, 5, 5, subsample=(2,2), border_mode='same', input_shape=(1,28,28), init='glorot_uniform'))
+discriminator_t.add(Convolution2D(128, 3, 3, border_mode='same', input_shape=(1,32,32),init='glorot_uniform'))
 discriminator_t.add(Activation('tanh'))
-discriminator_t.add(Dropout(0.2))
-discriminator_t.add(Convolution2D(512, 5, 5, subsample=(2,2), border_mode='same', init='glorot_uniform'))
+discriminator_t.add(Dropout(0.3))
+discriminator_t.add(Convolution2D(128, 3, 3, subsample=(2,2), border_mode='same', init='glorot_uniform'))
 discriminator_t.add(Activation('tanh'))
-discriminator_t.add(Dropout(0.2))
+discriminator_t.add(Dropout(0.3))
+discriminator_t.add(Convolution2D(256, 3, 3, subsample=(2,2), border_mode='same', init='glorot_uniform'))
+discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Dropout(0.3))
+discriminator_t.add(Convolution2D(256, 3, 3, border_mode='same', init='glorot_uniform'))
+discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Dropout(0.3))
 discriminator_t.add(Flatten())
 
 discriminator_model = discriminator_t(input_d)
@@ -76,7 +84,7 @@ type_predict = Dense(2, activation='softmax', name='type_predict')(discriminator
 class_predict = Dense(10, activation='softmax', name='class_predict')(discriminator_model)
 
 discriminator = Model(input=input_d, output=[type_predict, class_predict])
-discriminator_optim = Adam(lr=0.000013)
+discriminator_optim = Adam(lr=0.00002)
 discriminator.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=discriminator_optim)
 print(discriminator.summary())
 
@@ -91,22 +99,26 @@ generator_class = Dense(100, activation='tanh', input_shape=(10,))(input_class)
 merge_layer = merge([input_g, generator_class], mode='mul')
 
 generator_t = Sequential()
-generator_t.add(Dense(512*7*7, input_shape=(100,), init='glorot_uniform'))
+generator_t.add(Dense(512*8*8, input_shape=(100,), init='glorot_uniform'))
 generator_t.add(Activation('tanh'))
-generator_t.add(Reshape([512, 7, 7]))
+generator_t.add(Reshape([512, 8, 8]))
+generator_t.add(Convolution2D(512, 5, 5, border_mode='same', init='glorot_uniform'))
+generator_t.add(Activation('tanh'))
+generator_t.add(Dropout(0.4))
 generator_t.add(UpSampling2D(size=(2, 2)))
-generator_t.add(Convolution2D(256, 3, 3, border_mode='same', init='glorot_uniform'))
+generator_t.add(Convolution2D(256, 5, 5, border_mode='same', init='glorot_uniform'))
 generator_t.add(Activation('tanh'))
+generator_t.add(Dropout(0.4))
 generator_t.add(UpSampling2D(size=(2, 2)))
-generator_t.add(Convolution2D(128, 3, 3, border_mode='same', init='glorot_uniform'))
+generator_t.add(Convolution2D(256, 5, 5, border_mode='same', init='glorot_uniform'))
 generator_t.add(Activation('tanh'))
+generator_t.add(Dropout(0.4))
 generator_t.add(Convolution2D(1, 1, 1, border_mode='same', init='glorot_uniform'))
 generator_t.add(Activation('tanh'))
-
 generated_img = generator_t(merge_layer)
 
 generator = Model(input=[input_g, input_class], output=generated_img)
-generator_optim = Adam(lr=0.00001)
+generator_optim = Adam(lr=0.00002)
 generator.compile(loss='binary_crossentropy', optimizer=generator_optim)
 print(generator.summary())
 
@@ -122,15 +134,15 @@ type_predicted, class_predicted = discriminator(generated_image)
 
 GAN = Model(input=[latent_noise, image_class], output=[type_predicted, class_predicted])
 
-GAN_optim = Adam(lr=0.00001)
+GAN_optim = Adam(lr=0.00002)
 GAN.compile(loss=['binary_crossentropy', 'categorical_crossentropy'], optimizer=GAN_optim)
 GAN.summary()
 
 
 if load_models == 1:
     print("Loading models from saved files!")
-    discriminator.load_weights("discriminator.keras")
-    generator.load_weights("generator.keras")
+    discriminator.load_weights("Run2/Models/discriminator.keras")
+    generator.load_weights("Run2/Models/generator.keras")
 
 
 def toggle_trainable(network, state):
@@ -139,7 +151,7 @@ def toggle_trainable(network, state):
         layer.trainable = state
 
 
-def sample_generation(class_id):
+def sample_generation(class_id, iter_num):
     class_vector = np.zeros([9, 10])
     class_vector[:,class_id] = 1.0
     print(class_vector)
@@ -151,9 +163,12 @@ def sample_generation(class_id):
         generated_image = generated_images[image_idx][0]
         plt.imshow(generated_image, cmap='gray')
         plt.title(str(class_id))
-    plt.show(block=False)
-    time.sleep(3)
-    plt.close('all')
+    print('Generating samples')
+    plt.savefig('Run2/Results/sample_'+str(iter_num)+'.png')
+    #plt.show(block=False)
+    #time.sleep(3)
+    print('Done saving')
+    #plt.close('all')
 
 
 def train_gan():
@@ -162,13 +177,13 @@ def train_gan():
             # Display 9 randomly generated samples every display_update'th iteration
             class_id = np.random.randint(0,10)
             print(class_id)
-            sample_generation(class_id)
+            sample_generation(class_id, time_step)
             # Save the current models as well
-            discriminator.save_weights("discriminator.keras", overwrite=True)
-            generator.save_weights("generator.keras", overwrite=True)
+            discriminator.save_weights("Run2/Models/discriminator.keras", overwrite=True)
+            generator.save_weights("Run2/Models/generator.keras", overwrite=True)
         if time_step % backup_update == 0:
-            discriminator.save_weights("discriminator_backup-" + str(time_step) + ".keras", overwrite=True)
-            generator.save_weights("generator_backup-" + str(time_step) + ".keras", overwrite=True)
+            discriminator.save_weights("Run2/Models/discriminator_backup-" + str(time_step) + ".keras", overwrite=True)
+            generator.save_weights("Run2/Models/generator_backup-" + str(time_step) + ".keras", overwrite=True)
 
         
         main_labels_idx = np.random.randint(0, 10)
@@ -176,7 +191,7 @@ def train_gan():
         """
         Generate some random noise and some random labels to use as inputs
         """
-        batch_size = 64
+        batch_size = 8
         random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
         random_labels = np.zeros([batch_size, 10])
         for idx in range(batch_size):
@@ -189,7 +204,6 @@ def train_gan():
         train_data_cur = np.asarray(final_data[main_labels_idx])
         train_idx = np.random.randint(0, len(train_data_cur), size=batch_size)
         discrim_current_train = train_data_cur[train_idx,:,:,:]
-        discrim_current_train_labels_idx = np.zeros(batch_size).fill(main_labels_idx)
         discrim_current_train_labels = np.zeros([batch_size, 10])
         for idx in range(batch_size):
             discrim_current_train_labels[idx][main_labels_idx] = 1.0
@@ -208,15 +222,24 @@ def train_gan():
             discrim_current_train_type[ix, 1] = np.random.uniform(0.7, 1.2)
             discrim_current_train_type[ix, 0] = np.random.uniform(0.0, 0.3)
             discrim_current_train_type[batch_size+ix, 0] = np.random.uniform(0.7, 1.2)
-            discrim_current_train_type[batch_size + ix, 1] = np.random.uniform(0.0, 0.3)
+            discrim_current_train_type[batch_size+ix, 1] = np.random.uniform(0.0, 0.3)
 
-        discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, [discrim_current_train_type, discrim_current_train_labels])
-        discriminator_losses.append(discriminator_loss_cur)
+        final_dloss = []
+	for train_ix in range(3):
+            discriminator_loss_cur = discriminator.train_on_batch(discrim_current_train, [discrim_current_train_type, discrim_current_train_labels])
+	    final_dloss = discriminator_loss_cur
+	discriminator_losses.append(final_dloss)
 
         """
         To train the generator use the random noise and random labels from earlier
         """
         toggle_trainable(discriminator, False)
+	# Reinitialize the random_noise and random_labels
+	random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
+        random_labels = np.zeros([batch_size, 10])
+        for idx in range(batch_size):
+            random_labels[idx][main_labels_idx] = 1.0
+	
         gen_current_train = random_noise
         gen_current_train_labels = random_labels
         gen_current_train_type = np.zeros(shape=[batch_size, 2])
@@ -233,7 +256,8 @@ def train_gan():
 
 
 train_gan()
-# for x in range(1000):
-#    sample_generation(np.random.randint(0,10))
+for i in range(10):
+    for x in range(10):
+        sample_generation(i, x)
 
 plt.show()
