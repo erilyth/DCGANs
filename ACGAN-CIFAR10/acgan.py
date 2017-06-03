@@ -6,12 +6,11 @@ from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNor
 from keras.optimizers import Adam, sgd
 from keras.layers.advanced_activations import LeakyReLU
 import time
+from skimage import color, exposure, transform
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-
 # Uses Theano based tensors of shape (channels, rows, cols), for details see https://keras.io/backend/
-backend.set_image_data_format("channels_first")
 
 """
 # Algorithm Specifics:
@@ -20,7 +19,7 @@ backend.set_image_data_format("channels_first")
 
 discriminator_losses = []
 generator_losses = []
-display_update = 500 # Save the models and update outputs every 500 iterations
+display_update = 200 # Save the models and update outputs every 500 iterations
 backup_update = 3000 # Store a backup of the models every 3000 iterations
 load_models = 0
 
@@ -29,11 +28,26 @@ def normalize_data(data):
     # Data shape would be (_, 3, 28, 28)
     data -= 128.0
     data /= 128.0
+    """
+    data = data.swapaxes(1,2).swapaxes(2,3)
+    final_data = data
+    for data_idx in range(len(final_data)):
+        final_data[data_idx] = color.rgb2luv(data[data_idx])
+    final_data = final_data.swapaxes(2,3).swapaxes(1,2)
+    print final_data[0]
+    """
     return data
 
 
 def unnormalize_data(data):
     # Data shape would be (_, 3, 28, 28)
+    """
+    data = data.swapaxes(1,2).swapaxes(2,3)
+    final_data = data
+    for data_idx in range(len(final_data)):
+        final_data[data_idx] = color.luv2rgb(data[data_idx])
+    final_data = final_data.swapaxes(2,3).swapaxes(1,2)
+    """
     data *= 128.0
     data += 128.0
     return data
@@ -44,9 +58,10 @@ Gather the training data from the CIFAR10 dataset
 """
 h, w = 32, 32 # Generated image height and width
 (train_data, train_labels), (test_data, test_labels) = cifar10.load_data()
+print train_data.shape
 train_size = train_data.shape[0]
 # Batch inputs to keras models require this shape
-train_data = train_data.reshape(train_size, 3, h, w).astype('float32')
+train_data = train_data.reshape(train_size, 3, h, w).astype('float64')
 train_data = normalize_data(train_data)
 train_labels = train_labels[:,0]
 # A dictionary where each key is the data corresponding to a certain class
@@ -64,17 +79,17 @@ Discriminator Model
 input_d = Input(shape=(3,32,32))
 
 discriminator_t = Sequential()
-discriminator_t.add(Convolution2D(128, 3, 3, border_mode='same', input_shape=(3,32,32),init='glorot_uniform'))
-discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Convolution2D(32, 3, 3, border_mode='same', input_shape=(3,32,32)))
+discriminator_t.add(LeakyReLU())
 discriminator_t.add(Dropout(0.3))
-discriminator_t.add(Convolution2D(128, 3, 3, subsample=(2,2), border_mode='same', init='glorot_uniform'))
-discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Convolution2D(64, 3, 3, subsample=(2,2), border_mode='same'))
+discriminator_t.add(LeakyReLU())
 discriminator_t.add(Dropout(0.3))
-discriminator_t.add(Convolution2D(256, 3, 3, subsample=(2,2), border_mode='same', init='glorot_uniform'))
-discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Convolution2D(128, 3, 3, subsample=(2,2), border_mode='same'))
+discriminator_t.add(LeakyReLU())
 discriminator_t.add(Dropout(0.3))
-discriminator_t.add(Convolution2D(256, 3, 3, border_mode='same', init='glorot_uniform'))
-discriminator_t.add(Activation('tanh'))
+discriminator_t.add(Convolution2D(256, 3, 3, border_mode='same'))
+discriminator_t.add(LeakyReLU())
 discriminator_t.add(Dropout(0.3))
 discriminator_t.add(Flatten())
 
@@ -95,25 +110,26 @@ Generator Model
 input_g = Input(shape=(100,))
 input_class = Input(shape=(10,))
 
-generator_class = Dense(100, activation='tanh', input_shape=(10,))(input_class)
+generator_class = Dense(100, input_shape=(10,))(input_class)
 merge_layer = merge([input_g, generator_class], mode='mul')
 
 generator_t = Sequential()
-generator_t.add(Dense(512*8*8, input_shape=(100,), init='glorot_uniform'))
-generator_t.add(Activation('tanh'))
-generator_t.add(Reshape([512, 8, 8]))
-generator_t.add(Convolution2D(512, 5, 5, border_mode='same', init='glorot_uniform'))
-generator_t.add(Activation('tanh'))
-generator_t.add(Dropout(0.4))
+generator_t.add(Dense(1024, input_shape=(100,)))
+generator_t.add(Dense(128*8*8))
+generator_t.add(Activation('relu'))
+generator_t.add(Reshape([128, 8, 8]))
+generator_t.add(Convolution2D(256, 5, 5, border_mode='same'))
+generator_t.add(Activation('relu'))
+generator_t.add(Dropout(0.3))
 generator_t.add(UpSampling2D(size=(2, 2)))
-generator_t.add(Convolution2D(256, 5, 5, border_mode='same', init='glorot_uniform'))
-generator_t.add(Activation('tanh'))
-generator_t.add(Dropout(0.4))
+generator_t.add(Convolution2D(128, 5, 5, border_mode='same'))
+generator_t.add(Activation('relu'))
+generator_t.add(Dropout(0.3))
 generator_t.add(UpSampling2D(size=(2, 2)))
-generator_t.add(Convolution2D(256, 5, 5, border_mode='same', init='glorot_uniform'))
-generator_t.add(Activation('tanh'))
-generator_t.add(Dropout(0.4))
-generator_t.add(Convolution2D(3, 1, 1, border_mode='same', init='glorot_uniform'))
+generator_t.add(Convolution2D(128, 3, 3, border_mode='same'))
+generator_t.add(Activation('relu'))
+generator_t.add(Dropout(0.3))
+generator_t.add(Convolution2D(3, 1, 1, border_mode='same'))
 generator_t.add(Activation('tanh'))
 generated_img = generator_t(merge_layer)
 
@@ -161,6 +177,7 @@ def sample_generation(class_id, iter_num):
     for image_idx in range(len(generated_images)):
         plt.subplot(3, 3, image_idx+1)
         generated_image = generated_images[image_idx]
+	print generated_image.shape
         plt.imshow(generated_image.swapaxes(0,1).swapaxes(1,2))
         plt.title(str(class_id))
     print('Generating samples')
@@ -191,7 +208,7 @@ def train_gan():
         """
         Generate some random noise and some random labels to use as inputs
         """
-        batch_size = 8
+        batch_size = 4
         random_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, 100])
         random_labels = np.zeros([batch_size, 10])
         for idx in range(batch_size):
