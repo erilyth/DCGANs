@@ -1,7 +1,7 @@
 import numpy as np
 from keras.datasets import cifar10
 from keras.models import Sequential
-from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, AveragePooling2D
+from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, AveragePooling2D, MaxPooling2D
 from keras.optimizers import Adam, sgd
 from keras.layers.advanced_activations import LeakyReLU
 import time
@@ -22,21 +22,28 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 1000 # Save the models and update outputs every 100 iterations
+display_update = 100 # Save the models and update outputs every 100 iterations
 backup_update = 5000 # Store a backup of the models every 1000 iterations
 load_models = 0
 
 
 def normalize_data(data):
     # Data shape would be (_, 1, 32, 32)
-    data /= 256.0
+    data /= 128.0
+    data -= 1.0
     return data
 
 
 def unnormalize_data(data):
     # Data shape would be (_, 1, 32, 32)
     # data = np.clip(data, 0.5, 1.0)
-    data *= 256.0
+    data *= 128.0
+    data += 1.0
+    return data
+
+def unnormalize_display(data):
+    data += 1.0
+    data /= 2.0
     return data
 
 h, w = 32, 32
@@ -51,15 +58,23 @@ print(train_data.shape[1:])
 discriminator = Sequential()
 discriminator.add(Convolution2D(32, 5, 5, border_mode='same', input_shape=(3,32,32)))
 discriminator.add(LeakyReLU())
+discriminator.add(Dropout(0.2))
 discriminator.add(Convolution2D(64, 3, 3, border_mode='same'))
-discriminator.add(AveragePooling2D(pool_size=(2, 2), border_mode='valid'))
+discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU())
+discriminator.add(Dropout(0.2))
 discriminator.add(Convolution2D(128, 3, 3, border_mode='same'))
-discriminator.add(AveragePooling2D(pool_size=(2, 2), border_mode='valid'))
+discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU())
+discriminator.add(Dropout(0.2))
 discriminator.add(Convolution2D(256, 3, 3, border_mode='same'))
-discriminator.add(AveragePooling2D(pool_size=(2, 2), border_mode='valid'))
+discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU())
+discriminator.add(Dropout(0.2))
+discriminator.add(Convolution2D(512, 3, 3, border_mode='same'))
+discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
+discriminator.add(LeakyReLU())
+discriminator.add(Dropout(0.2))
 discriminator.add(Convolution2D(1, 1, 1, border_mode='same'))
 discriminator.add(Flatten())
 discriminator.add(Dense(1))
@@ -71,21 +86,26 @@ print(discriminator.summary())
 
 # Generator Model
 generator = Sequential()
-generator.add(Dense(256*4*4, input_shape=(100,)))
-generator.add(Reshape([256, 4, 4]))
+generator.add(Dense(512*2*2, input_shape=(100,)))
+generator.add(Reshape([512, 2, 2]))
+generator.add(Convolution2D(512, 3, 3, border_mode='same'))
+generator.add(LeakyReLU())
+generator.add(Dropout(0.2))
+generator.add(UpSampling2D(size=(2, 2)))
 generator.add(Convolution2D(256, 3, 3, border_mode='same'))
 generator.add(LeakyReLU())
+generator.add(Dropout(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
 generator.add(Convolution2D(128, 3, 3, border_mode='same'))
 generator.add(LeakyReLU())
-generator.add(Dropout(0.3))
+generator.add(Dropout(0.2))
 generator.add(Convolution2D(64, 3, 3, border_mode='same'))
 generator.add(LeakyReLU())
-generator.add(Dropout(0.3))
+generator.add(Dropout(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
 generator.add(Convolution2D(32, 3, 3, border_mode='same'))
 generator.add(LeakyReLU())
-generator.add(Dropout(0.3))
+generator.add(Dropout(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
 generator.add(Convolution2D(3, 5, 5, border_mode='same'))
 generator.add(Activation('tanh'))
@@ -118,10 +138,11 @@ def sample_generation(iter_num):
     global generator
     sample_noise = np.random.normal(loc=0.0, scale=1.0, size=[9, 100])
     generated_images = generator.predict(sample_noise)
-    generated_images = unnormalize_data(generated_images)
+    generated_images = unnormalize_display(generated_images)
     for image_idx in range(len(generated_images)):
         plt.subplot(3, 3, image_idx+1)
-        generated_image = train_data[image_idx].transpose(1,2,0)
+        #generated_image = unnormalize_display(train_data[image_idx]).transpose(1,2,0)
+        generated_image = generated_images[image_idx].transpose(1,2,0)
         plt.imshow(generated_image)
     #plt.show(block=False)
     plt.savefig('Run1/results/sample_'+str(iter_num)+'.png')
