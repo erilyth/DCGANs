@@ -4,6 +4,7 @@ from keras.models import Sequential
 from keras.layers import Input, Convolution2D, Dropout, Flatten, Dense, BatchNormalization, Reshape, UpSampling2D, Activation, AveragePooling2D, MaxPooling2D
 from keras.optimizers import Adam, sgd
 from keras.layers.advanced_activations import LeakyReLU
+from keras.regularizers import L1L2
 import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -14,8 +15,8 @@ from tqdm import tqdm
 """
 # Algorithm Specifics:
 1) Uses the CIFAR10 dataset
-2) The Generator takes in a random noise vector of shape (,100) as input and generates an output of shape (,1,28,28)
-3) The Discriminator takes in an input image of shape (,1,28,28) and gives an output of shape (,2)
+2) The Generator takes in a random noise vector of shape (,100) as input and generates an output of shape (,3,32,32)
+3) The Discriminator takes in an input image of shape (,3,32,32) and gives an output of shape (,1)
 4) The outputs of the discriminator are probabilities. In the output labels, 0 corresponds to generated and 1 corresponds to real.  
 5) When we train the discriminator we use the correct output labels but when we train the generator we invert the labels, this ensures that the discriminator tries to maximize its prediction accuracy whereas the generator tries to minimize it.
 """
@@ -54,18 +55,20 @@ train_data = train_data.reshape(train_size, 3, h, w).astype('float32')
 train_data = normalize_data(train_data)
 print(train_data.shape[1:])
 
+weight_reg = lambda: L1L2(l1=1e-7, l2=1e-7)
+
 # Discriminator Model
 discriminator = Sequential()
-discriminator.add(Convolution2D(64, 5, 5, border_mode='same', input_shape=(3,32,32)))
+discriminator.add(Convolution2D(64, 5, 5, border_mode='same', input_shape=(3,32,32), W_regularizer=weight_reg()))
 discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU(0.2))
-discriminator.add(Convolution2D(128, 3, 3, border_mode='same'))
+discriminator.add(Convolution2D(128, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU(0.2))
-discriminator.add(Convolution2D(256, 3, 3, border_mode='same'))
+discriminator.add(Convolution2D(256, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 discriminator.add(MaxPooling2D(pool_size=(2, 2), border_mode='same'))
 discriminator.add(LeakyReLU(0.2))
-discriminator.add(Convolution2D(1, 3, 3, border_mode='same'))
+discriminator.add(Convolution2D(1, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 discriminator.add(AveragePooling2D(pool_size=(4, 4), border_mode='valid'))
 discriminator.add(Flatten())
 discriminator.add(Activation('sigmoid'))
@@ -76,22 +79,22 @@ print(discriminator.summary())
 
 # Generator Model
 generator = Sequential()
-generator.add(Dense(256*4*4, input_shape=(100,)))
+generator.add(Dense(256*4*4, input_shape=(100,), W_regularizer=weight_reg()))
 generator.add(BatchNormalization(mode=0))
 generator.add(Reshape([256, 4, 4]))
-generator.add(Convolution2D(128, 3, 3, border_mode='same'))
+generator.add(Convolution2D(128, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 generator.add(BatchNormalization(mode=0, axis=1))
 generator.add(LeakyReLU(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
-generator.add(Convolution2D(128, 3, 3, border_mode='same'))
+generator.add(Convolution2D(128, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 generator.add(BatchNormalization(mode=0, axis=1))
 generator.add(LeakyReLU(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
-generator.add(Convolution2D(64, 3, 3, border_mode='same'))
+generator.add(Convolution2D(64, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 generator.add(BatchNormalization(mode=0, axis=1))
 generator.add(LeakyReLU(0.2))
 generator.add(UpSampling2D(size=(2, 2)))
-generator.add(Convolution2D(3, 3, 3, border_mode='same'))
+generator.add(Convolution2D(3, 3, 3, border_mode='same', W_regularizer=weight_reg()))
 generator.add(Activation('sigmoid'))
 generator_optim = Adam(lr=1e-4, decay=1e-5)
 # Apply log loss at the output of shape (_, 3, 32, 32)
