@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 discriminator_losses = []
 generator_losses = []
-display_update = 100 # Save the models and update outputs every 100 iterations
+display_update = 1000 # Save the models and update outputs every 100 iterations
 backup_update = 5000 # Store a backup of the models every 1000 iterations
 load_models = 0
 
